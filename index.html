@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>التعرف على إشارات الصم والبكم</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f3f3f3;
+        }
+        video, canvas {
+            display: block;
+            margin: 20px auto;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>التعرف على إشارات الصم والبكم</h1>
+    <div id="video-container">
+        <video id="video" autoplay></video>
+        <canvas id="output"></canvas>
+    </div>
+    <button onclick="goToExtract()">الذهاب إلى صفحة الاستخراج</button>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="detect.js"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+
+        // إعداد المتغيرات لتخزين الحالة للكائنات المستخدمة (Pose & Hands)
+        let pose, hands;
+
+        // إعداد الكاميرا
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            await video.play();
+
+            // ضبط أبعاد الفيديو والقماش
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            };
+        }
+
+        // إعداد MediaPipe Pose و Hands بشكل مشترك
+        async function setupPoseAndHands() {
+            pose = new Pose.Pose({
+                locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}',
+            });
+
+            hands = new Hands.Hands({
+                locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}',
+            });
+
+            // تعيين الخيارات لكل من الـ Pose و الـ Hands
+            const commonOptions = {
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            };
+
+            pose.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                ...commonOptions,
+            });
+
+            hands.setOptions({
+                maxNumHands: 2,
+                ...commonOptions,
+            });
+
+            pose.onResults(onResultsPose);
+            hands.onResults(onResultsHands);
+
+            processVideoFrame();
+        }
+
+        // معالجة نتائج Pose
+        function onResultsPose(results) {
+            drawPose(results);
+        }
+
+        // معالجة نتائج Hands
+        function onResultsHands(results) {
+            drawHands(results);
+            compareHandSigns(results.multiHandLandmarks);
+        }
+
+        // رسم الهيكل العظمي (Pose)
+        function drawPose(results) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (results.poseLandmarks) {
+                results.poseLandmarks.forEach((landmark) => {
+                    const x = landmark.x * canvas.width;
+                    const y = landmark.y * canvas.height;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = "red";
+                    ctx.fill();
+                });
+            }
+        }
+
+        // رسم إحداثيات اليد (Hands)
+        function drawHands(results) {
+            if (results.multiHandLandmarks) {results.multiHandLandmarks.forEach((landmarks) => {
+                    landmarks.forEach((landmark) => {
+                        const x = landmark.x * canvas.width;
+                        const y = landmark.y * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = "blue";
+                        ctx.fill();
+                    });
+                });
+            }
+        }
+
+        // مقارنة الإشارة بالإشارات المخزنة مسبقًا
+        function compareHandSigns(landmarks) {
+            // تخزين القيم المرجعية لإشارة معينة هنا.
+            const predefinedSign = [
+                { x: 0.5, y: 0.2 }, // مثال على نقطة مرجعية
+            ];
+
+            let match = true;
+            if (landmarks) {
+                for (let i = 0; i < predefinedSign.length; i++) {
+                    const reference = predefinedSign[i];
+                    const actual = landmarks[i];
+
+                    if (
+                        Math.abs(reference.x - actual.x) > 0.05 ||
+                        Math.abs(reference.y - actual.y) > 0.05
+                    ) {
+                        match = false;
+                        break;
+                    }
+                }
+
+                if (match) {
+                    console.log("تم التعرف على الإشارة!");
+                }
+            }
+        }
+
+        // معالجة الفيديو بشكل مستمر
+        async function processVideoFrame() {
+            if (!video.paused && !video.ended) {
+                await pose.send({ image: video });
+                await hands.send({ image: video });
+                requestAnimationFrame(processVideoFrame);
+            }
+        }
+
+        // التبديل إلى صفحة الاستخراج
+        function goToExtract() {
+            window.location.href = 'extract.html';
+        }
+
+        // تشغيل الكاميرا وتهيئة MediaPipe
+        setupCamera().then(setupPoseAndHands);
+
+    </script>
+</body>
+</html>
